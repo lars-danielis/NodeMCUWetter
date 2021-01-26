@@ -1,0 +1,115 @@
+#include <ESP8266WiFi.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+
+#define SEALEVELPRESSURE_HPA (1013.25)
+
+const char* ssid = "FRITZ!Box 6490 ld";
+const char* password = "57731936459729772581";
+unsigned long delayTime;
+float h, t, p;
+char temperatureCString[6];
+char humidityString[6];
+char pressureString[7];
+
+Adafruit_BME280 bme;
+
+WiFiServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+  Wire.begin(5, 12);
+  Serial.println(F("BME280 test"));
+
+    bool status;
+    status = bme.begin(0x76);
+  
+  // Connect to WiFi network
+  Serial.println();
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  
+  // Start the server
+  server.begin();
+  Serial.println("Server started");
+
+  // Print the IP address
+  Serial.println(WiFi.localIP());
+}
+
+void getWeather() {
+  
+    h = bme.readHumidity();
+    t = bme.readTemperature();    
+    p = bme.readPressure()/ 100.0;
+    dtostrf(t, 5, 1, temperatureCString);
+    dtostrf(h, 5, 1, humidityString);
+    dtostrf(p, 6, 1, pressureString);
+    delay(100);
+ 
+}
+
+void loop() {
+  // Check if a client has connected
+  WiFiClient client = server.available();
+  
+  if (client) {
+    Serial.println("New client");
+    // bolean to locate when the http request ends
+    boolean blank_line = true;
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+        
+        if (c == '\n' && blank_line) {
+            getWeather();
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-Type: text/html");
+            client.println("Connection: close");
+            client.println();
+            // your actual web page that displays temperature
+            client.println("<!DOCTYPE HTML>");
+            client.println("<html>");
+            client.println("<head><META HTTP-EQUIV=\"refresh\" CONTENT=\"15\"></head>");
+            client.println("<body><h1>BME280 Web Server</h1>");
+            client.println("<table border=\"2\" width=\"456\" cellpadding=\"10\"><tbody><tr><td>");
+            client.println("<h3>Temperatur = ");
+            client.println(temperatureCString);
+            client.println("&deg;C</h3><h3>Luftfeuchte = ");
+            client.println(humidityString);
+            client.println("%</h3>");
+            client.println("<h3>Luftdruck = ");
+            client.println(pressureString);
+            client.println("hPa");
+            client.println("</h3></td></tr></tbody></table></body></html>");  
+            break;
+        }
+        if (c == '\n') {
+          // when starts reading a new line
+          blank_line = true;
+        }
+        else if (c != '\r') {
+          // when finds a character on the current line
+          blank_line = false;
+        }
+      }
+    }  
+    // closing the client connection
+    delay(1);
+    client.stop();
+    Serial.println("Client disconnected.");
+  }
+} 
