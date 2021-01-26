@@ -3,23 +3,25 @@
 // Das Gerät für innen pusht auch aber holt sich auch die Werte von aussen
 // und zeigt beides auf dem e-Paper Display an
 
-// Version Lars Danielis 1.0 16.01.21 initial
-//                       1.1 21.01.21 Ringspeicher für 20min und 60 min Luftdruckverlaufsermittlung, Versionsausgabe beim Start
-//                       1.2 22.01.21 Luftdruckänderung darstellen, dazu dient folgende Tabelle:
-//                                    Luftdruckänderung pro Stunde
-//                                    > -1 < 1,3 gleichbleibend
-//                                    > 1,3 < 3,3 steigend
-//                                    > 3,3 stark steigend, Gewitter?
-//                                    < -1 > -2 fallend
-//                                    < -2 stark fallend, Gewitter?
-//                                    3 Stunden Periode für 3 Stunden Symbole:
-//                                    ___ gleichbleibend während der letzten 3 Stunden
-//                                    //_ zwei Stunden steigend 1 Stunde gleichbleibend
-//                                    \// ein Stunde fallend zwei Stunden steigend
-//                                        usw nach dem Schema
-//                       1.3 23.01.21 Status und Werte der Druckverlaufssignale an ThingSpeak schicken
-//                                    Debugausgaben optimiert, Code gespart, NTP Zeit wird bis 5 mal abgerufen wenn falsch
-//                       1.4 25.01.21 Aussenteil erfasst 12V und schickt sie auf Feld 5 des ThingSpeak Kanals
+// Lars Danielis 2021
+// 1.0 16.01.21 initial
+// 1.1 21.01.21 Ringspeicher für 20min und 60 min Luftdruckverlaufsermittlung, Versionsausgabe beim Start
+// 1.2 22.01.21 Luftdruckänderung darstellen, dazu dient folgende Tabelle:
+//              Luftdruckänderung pro Stunde
+//              > -1 < 1,3 gleichbleibend
+//              > 1,3 < 3,3 steigend
+//              > 3,3 stark steigend, Gewitter?
+//              < -1 > -2 fallend
+//              < -2 stark fallend, Gewitter?
+//              3 Stunden Periode für 3 Stunden Symbole:
+//              ___ gleichbleibend während der letzten 3 Stunden
+//              //_ zwei Stunden steigend 1 Stunde gleichbleibend
+//              \// ein Stunde fallend zwei Stunden steigend
+//                  usw nach dem Schema
+// 1.3 23.01.21 Status und Werte der Druckverlaufssignale an ThingSpeak schicken
+//              Debugausgaben optimiert, Code gespart, NTP Zeit wird bis 5 mal abgerufen wenn falsch
+// 1.4 25.01.21 Aussenteil erfasst 12V und schickt sie auf Feld 5 des ThingSpeak Kanals
+// 1.5 26.01.21 Aussenteil rauscht stark im Temperaturwert - Filter nötig 
 
 char versionWetterLD[21] = "Version 1.4 25.01.21";
 
