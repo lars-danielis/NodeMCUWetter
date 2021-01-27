@@ -21,9 +21,13 @@
 // 1.3 23.01.21 Status und Werte der Druckverlaufssignale an ThingSpeak schicken
 //              Debugausgaben optimiert, Code gespart, NTP Zeit wird bis 5 mal abgerufen wenn falsch
 // 1.4 25.01.21 Aussenteil erfasst 12V und schickt sie auf Feld 5 des ThingSpeak Kanals
-// 1.5 26.01.21 Aussenteil rauscht stark im Temperaturwert - Filter nötig 
+// 1.5 26.01.21 Aussenteil rauscht stark im Temperaturwert - Filter nötig (geklont auf Surface)
+//              Temperaturwerte werden alle während des 2 Min Zyklus gesammelt und der Mittelwert genutzt.
+//              Zusatzlich wird der Wert über die Bibliothek Smoothed geglättet
+// 1.6 26.01.21 Batteriemessung auch glätten
+//              alles glätten
 
-char versionWetterLD[21] = "Version 1.4 25.01.21";
+char versionWetterLD[21] = "Version 1.6 26.01.21";
 
 // e-paper 2,9" 296x128
 // BUSY -> D2|4, RST -> D1|5, DC -> D0|16, CS -> D8|15, CLK -> SCK|D5|14, DIN -> MOSI|D7|13, GND -> GND, 3.3V -> 3.3V
@@ -39,7 +43,8 @@ char versionWetterLD[21] = "Version 1.4 25.01.21";
 #include "icons.h"
 #endif
 
-#include <RingBuf.h> // Für den Verlauf des Luftdrucks
+#include <RingBuf.h>  // Für den Verlauf des Luftdrucks
+#include <Smoothed.h> // glätten der Temperatur
 
 #include <ESP8266WiFi.h> // WLAN Zugang und Sensorbibliotheken
 #include <Adafruit_Sensor.h>
@@ -59,22 +64,27 @@ void syncNTP(void);
 #define SECRET_WRITE_APIKEY "WVVJSGH21CQ7IOCE" // replace XYZ with your channel write API Key
 #define SECRET_READ_APIKEY "F2JI7RAHEZGKI7GV"  // replace XYZ with your channel read API Key
 
-#define DeltaT -3.5 // 3,5°C Wärmeeintrag durch das Gerät / innen
-#define DeltaH -1   // 1% Abweichung Sensortoleranz
+#define DeltaT -3.5   // 3,5°C Wärmeeintrag durch das Gerät / innen
+#define DeltaH -1     // 1% Abweichung Sensortoleranz
 #define DeltaTa -1.25 // 1.2°C Wärmeeintrag durch das Gerät / aussen
-#define DeltaHa 0   // 0% Abweichung Sensortoleranz
+#define DeltaHa 0     // 0% Abweichung Sensortoleranz
 
 const char *ssid = "FRITZ!Box 6490 ld"; // WLAN Zugangsdaten
 const char *password = "57731936459729772581";
 
 unsigned long delayTime;
-float h, t, p, tk, hk, tka, hka;
+float h, t, p, tk, hk, tka, hka, vFil;
 char temperatureCString[6]; // innen
 char humidityString[6];
 char pressureString[5];
 char atemperatureCString[6]; // aussen
 char ahumidityString[6];
 char apressureString[5];
+
+Smoothed<float> tSmoothed;
+Smoothed<float> vSmoothed;
+Smoothed<float> pSmoothed;
+Smoothed<float> hSmoothed;
 
 RingBuf<float, 10> pBuffer;
 RingBuf<float, 1> p20Buffer;
@@ -140,6 +150,10 @@ void setup()
   WiFi.begin(ssid, password);
 
   ThingSpeak.begin(client);
+  tSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
+  vSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
+  pSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
+  hSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
 
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -161,24 +175,26 @@ void setup()
 }
 
 void getWeather()
-{ // Sensorwerte auslesen (5000ms Zyklus)
+{ // Sensorwerte auslesen (10s Zyklus)
   float Vvalue = 0.0, Rvalue = 0.0;
 
-  h = bme.readHumidity();
-  t = bme.readTemperature();
-  p = bme.readPressure() / 100.0;
-
-  dtostrf(t, 5, 1, temperatureCString);
-  dtostrf(h, 5, 1, humidityString);
+  pSmoothed.add(bme.readPressure() / 100.0);
+  p = pSmoothed.get();
   dtostrf(p, 4, 0, pressureString);
+  
+  hSmoothed.add(bme.readHumidity());
+  h = hSmoothed.get();
+    
+  tSmoothed.add(bme.readTemperature());
+  t = tSmoothed.get();
 
 #ifdef CONF_INNEN
   tk = t + DeltaT;
   hk = (h * (6.1078 * pow(10, ((7.5 * t) / (237.3 + t))))) / (6.1078 * pow(10, ((7.5 * (tk)) / (237.3 + tk)))) + DeltaH;
   dtostrf(tk, 5, 1, temperatureCString);
   dtostrf(hk, 5, 1, humidityString);
-#endif
-#ifdef CONF_AUSSEN
+  tFilBuffer.push(tk);
+#else
   tka = t + DeltaTa;
   hka = (h * (6.1078 * pow(10, ((7.5 * t) / (237.3 + t))))) / (6.1078 * pow(10, ((7.5 * (tka)) / (237.3 + tka)))) + DeltaHa;
   dtostrf(tka, 5, 1, temperatureCString);
@@ -192,6 +208,8 @@ void getWeather()
   Vvalue = (float)Vvalue / 10.0;         //Find average of 10 values
   Rvalue = (float)(Vvalue / 1024.0) * 5; //Convert Voltage in 5v factor
   Tvoltage = Rvalue * RatioFactor;       //Find original voltage by multiplying with factor
+  vSmoothed.add(Tvoltage);
+  vFil = vSmoothed.get();
 }
 
 unsigned long previousMillis = 0;
@@ -284,14 +302,15 @@ void loop()
           client.println(p60delta);
           client.println("hPa");
 #else
-          client.println("<h3>Aussentemperatur korrigiert= ");
+          client.println("<h3>Aussentemperatur korrigiert gefiltert = ");
           client.println(temperatureCString);
-          client.println("&deg;C</h3><h3>Aussenluftfeuchte korrigiert = ");
+          client.println("&deg;C</h3>");
+          client.println("<h3>Aussenluftfeuchte korrigiert = ");
           client.println(humidityString);
           client.println("%</h3>");
-          client.println("<h3>Aussentemperatur Rohwert= ");
+          client.println("<h3>Aussentemperatur Rohwert gefiltert = ");
           client.println(String(t));
-          client.println("&deg;C</h3><h3>Aussenluftfeuchte Rohwert = ");
+          client.println("&deg;C</h3><h3>Aussenluftfeuchte Rohwert gefiltert = ");
           client.println(String(h));
           client.println("%</h3>");
           client.println("<h3>Korrekturwert Temperatur = ");
@@ -325,9 +344,7 @@ void loop()
 
 #ifdef CONF_INNEN
   const int modulo_innen_aussen = 0; // even
-#endif
-
-#ifdef CONF_AUSSEN
+#else
   const int modulo_innen_aussen = 1; // odd
 #endif
 
@@ -341,7 +358,7 @@ void loop()
   {
     ThingSpeakConnected = true;
     ThingSpeakConnectedFlagDeleted = true; // 2 minütiger ThingSpeak Kontakt
-
+    
     String status = "Druckdeltas um: " + String(hour()) + ":" + String(minute()) + ":" + String(second()) + "; "; // Statusstring Anfang
 
 #ifdef CONF_INNEN
@@ -422,13 +439,11 @@ void loop()
     ThingSpeak.setField(8, hk);
     ThingSpeak.setField(7, p);
     ThingSpeak.setStatus(status);
-#endif
-
-#ifdef CONF_AUSSEN
+#else
     ThingSpeak.setField(1, tka);
     ThingSpeak.setField(3, hka);
     ThingSpeak.setField(2, p);
-    ThingSpeak.setField(5, Tvoltage);
+    ThingSpeak.setField(5, vFil);
     ThingSpeak.setStatus("Aussenwerte");
 #endif
 
