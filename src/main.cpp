@@ -26,8 +26,9 @@
 //              Zusatzlich wird der Wert über die Bibliothek Smoothed geglättet
 // 1.6 26.01.21 Batteriemessung auch glätten
 //              alles glätten
+// 1.7 27.01.21 Glättparameter tunen
 
-char versionWetterLD[21] = "Version 1.6 26.01.21";
+char versionWetterLD[21] = "Version 1.7 27.01.21";
 
 // e-paper 2,9" 296x128
 // BUSY -> D2|4, RST -> D1|5, DC -> D0|16, CS -> D8|15, CLK -> SCK|D5|14, DIN -> MOSI|D7|13, GND -> GND, 3.3V -> 3.3V
@@ -150,10 +151,10 @@ void setup()
   WiFi.begin(ssid, password);
 
   ThingSpeak.begin(client);
-  tSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
-  vSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
-  pSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
-  hSmoothed.begin(SMOOTHED_EXPONENTIAL, 20);
+  tSmoothed.begin(SMOOTHED_EXPONENTIAL, 2);
+  vSmoothed.begin(SMOOTHED_EXPONENTIAL, 1);
+  pSmoothed.begin(SMOOTHED_EXPONENTIAL, 5);
+  hSmoothed.begin(SMOOTHED_EXPONENTIAL, 5);
 
   while (WiFi.status() != WL_CONNECTED)
   {
